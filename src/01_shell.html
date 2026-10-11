@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sistema Solar — Simulación física Kepleriana / N-cuerpo</title>
+<style>
+/* =====================================================================
+   SECCIÓN UI · Hoja de estilo (tema oscuro, responsive, transiciones)
+   ===================================================================== */
+:root{
+  --bg:#04060c;
+  --panel:rgba(11,15,25,.80);
+  --panel-solid:#0b0f19;
+  --border:rgba(120,165,255,.16);
+  --border-strong:rgba(120,165,255,.34);
+  --text:#e2e9f6;
+  --muted:#8ea0bd;
+  --accent:#5cc8ff;
+  --accent-2:#ffc172;
+  --good:#6ee7a0;
+  --warn:#ff8a8a;
+  --r:12px;
+  --tr:.22s cubic-bezier(.4,0,.2,1);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font:13px/1.45 "Segoe UI",Roboto,system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;user-select:none}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* ---------- utilidades ---------- */
+.row{display:flex;align-items:center;gap:8px}
+.spacer{flex:1}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dim{color:var(--muted)}
+.small{font-size:11px}
+kbd{font-family:var(--mono);font-size:11px;background:#1a2333;border:1px solid var(--border-strong);
+  border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:#cfe0f7}
+
+/* ---------- barra superior ---------- */
+#topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;
+  padding:8px 12px;background:linear-gradient(180deg,rgba(4,6,12,.92),rgba(4,6,12,0));
+  pointer-events:none;z-index:20}
+#topbar > *{pointer-events:auto}
+#title{font-weight:600;letter-spacing:.4px;white-space:nowrap}
+#title b{color:var(--accent)}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);
+  background:rgba(92,200,255,.08);color:var(--accent);white-space:nowrap}
+.badge.warn{border-color:rgba(255,138,138,.4);color:var(--warn);background:rgba(255,138,138,.08)}
+#stats{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted)}
+#stats span b{color:var(--text);font-weight:600}
+
+/* ---------- paneles laterales ---------- */
+.panel{position:absolute;background:var(--panel);border:1px solid var(--border);border-radius:var(--r);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 10px 40px rgba(0,0,0,.5);
+  transition:transform var(--tr),opacity var(--tr);z-index:30}
+.panel h3{margin:0;font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:var(--accent)}
+.panel header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border)}
+
+#panel{left:12px;top:52px;bottom:96px;width:268px;display:flex;flex-direction:column}
+#panel.collapsed{transform:translateX(-256px);opacity:.92}
+#panel.collapsed #panelBody{opacity:0;pointer-events:none}
+#panelBody{overflow:auto;padding:8px 10px 14px;flex:1;transition:opacity var(--tr)}
+#panelBody::-webkit-scrollbar,#info::-webkit-scrollbar{width:8px}
+#panelBody::-webkit-scrollbar-thumb,#info::-webkit-scrollbar-thumb{background:#243049;border-radius:8px}
+
+.group{margin:10px 0 4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.bodyItem{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;cursor:pointer;
+  transition:background var(--tr),transform var(--tr);border:1px solid transparent}
+.bodyItem:hover{background:rgba(92,200,255,.10);transform:translateX(2px)}
+.bodyItem.active{background:rgba(92,200,255,.16);border-color:var(--border-strong)}
+.dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 8px currentColor}
+.bodyItem .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bodyItem .kb{font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+/* ---------- controles ---------- */
+.ctrl{display:flex;align-items:center;gap:8px;padding:5px 2px}
+.switch{position:relative;width:38px;height:20px;border-radius:999px;background:#1d2637;
+  border:1px solid var(--border);cursor:pointer;transition:background var(--tr),border-color var(--tr);flex:0 0 auto}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+  background:#6b7c96;transition:transform var(--tr),background var(--tr)}
+.switch.on{background:rgba(92,200,255,.22);border-color:var(--border-strong)}
+.switch.on::after{transform:translateX(18px);background:var(--accent)}
+.ctrl label{flex:1;cursor:pointer}
+input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:#22304a;border-radius:4px;flex:1;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--accent);cursor:pointer;box-shadow:0 0 10px rgba(92,200,255,.6)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:var(--accent);cursor:pointer}
+.btn{background:#16203150;border:1px solid var(--border);color:var(--text);border-radius:8px;
+  padding:5px 10px;cursor:pointer;font:inherit;transition:background var(--tr),border-color var(--tr),transform var(--tr)}
+.btn:hover{background:rgba(92,200,255,.14);border-color:var(--border-strong)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:rgba(92,200,255,.18);border-color:var(--border-strong);color:#dff3ff}
+.btn.on{background:rgba(255,193,114,.18);border-color:rgba(255,193,114,.45);color:var(--accent-2)}
+select,input[type=date]{background:#131c2c;border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:4px 6px;font:inherit}
+
+/* ---------- ficha de datos ---------- */
+#info{right:12px;top:52px;width:300px;max-height:calc(100% - 150px);display:flex;flex-direction:column}
+#info.collapsed{transform:translateX(288px)}
+#infoBody{overflow:auto;padding:10px 12px}
+#infoName{font-size:17px;font-weight:600;margin:0 0 2px}
+#infoType{font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.8px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed rgba(120,165,255,.10)}
+.kv .k{color:var(--muted);font-size:12px}
+.kv .v{font-family:var(--mono);font-size:12px;text-align:right}
+.kv .v em{font-style:normal;color:var(--muted);font-size:11px}
+#liveBox{margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:9px;background:rgba(92,200,255,.05)}
+
+/* ---------- barra de tiempo ---------- */
+#timebar{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:10px;
+  flex-wrap:wrap;padding:9px 12px;background:var(--panel);border:1px solid var(--border);border-radius:var(--r);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:30;
+  box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#dateBox{font-family:var(--mono);font-size:13px;white-space:nowrap}
+#dateBox b{color:var(--accent)}
+#speedBox{font-family:var(--mono);font-size:12px;min-width:150px;white-space:nowrap}
+#speedBox b{color:var(--accent-2)}
+#measure{position:absolute;left:50%;transform:translateX(-50%);bottom:78px;z-index:29;
+  padding:6px 14px;border-radius:999px;border:1px solid var(--border-strong);
+  background:rgba(255,193,114,.10);color:var(--accent-2);font-family:var(--mono);font-size:12px;
+  opacity:0;transition:opacity var(--tr),bottom var(--tr);white-space:nowrap}
+#measure.show{opacity:1;bottom:86px}
+
+/* ---------- etiquetas de cuerpos ---------- */
+#labels{position:absolute;inset:0;pointer-events:none;z-index:15;overflow:hidden}
+.lbl{position:absolute;transform:translate(10px,-50%);font-size:11px;letter-spacing:.3px;
+  color:#dbe7f7;text-shadow:0 1px 4px #000,0 0 10px rgba(0,0,0,.8);white-space:nowrap;
+  padding:1px 4px;border-left:2px solid rgba(220,235,255,.5);opacity:.9;transition:opacity .18s linear}
+.lbl.sel{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+.lbl.moon{font-size:10px;color:#a9bcd6;border-left-color:rgba(170,190,220,.4)}
+
+/* ---------- ayuda / modal ---------- */
+#help{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(2,4,9,.72);z-index:60;backdrop-filter:blur(4px)}
+#help.show{display:flex}
+#helpCard{max-width:760px;max-height:82vh;overflow:auto;padding:20px 24px;border-radius:16px;
+  border:1px solid var(--border-strong);background:var(--panel-solid);box-shadow:0 24px 80px rgba(0,0,0,.7)}
+#helpCard h2{margin:0 0 6px;font-size:18px;color:var(--accent)}
+#helpCard h4{margin:16px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+#helpCard table{width:100%;border-collapse:collapse;font-size:12px}
+#helpCard td{padding:4px 8px;border-bottom:1px solid rgba(120,165,255,.10);vertical-align:top}
+#helpCard td:first-child{width:150px;white-space:nowrap}
+#helpCard ul{margin:6px 0;padding-left:18px;color:var(--muted)}
+
+/* ---------- carga ---------- */
+#loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;background:#04060c;z-index:80;transition:opacity .5s ease}
+#loading.done{opacity:0;pointer-events:none}
+#loading h1{font-size:22px;letter-spacing:2px;margin:0;color:var(--accent)}
+#bar{width:min(420px,70vw);height:4px;background:#18233a;border-radius:4px;overflow:hidden}
+#barFill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .2s ease}
+#loadMsg{font-family:var(--mono);font-size:12px;color:var(--muted)}
+#fatal{position:absolute;inset:0;display:none;padding:30px;background:#0b0f19;color:var(--warn);
+  font-family:var(--mono);font-size:13px;white-space:pre-wrap;z-index:90;overflow:auto}
+
+/* ---------- tour guiado ---------- */
+#tour{position:absolute;left:50%;transform:translateX(-50%) translateY(16px);bottom:78px;z-index:34;
+  width:min(620px,54vw);padding:11px 14px 12px;border-radius:var(--r);border:1px solid var(--border-strong);
+  background:linear-gradient(180deg,rgba(11,16,27,.90),rgba(11,16,27,.74));backdrop-filter:blur(12px);
+  box-shadow:0 18px 60px rgba(0,0,0,.55);opacity:0;pointer-events:none;
+  transition:opacity var(--tr),transform var(--tr)}
+#tour.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+#tourTop{display:flex;align-items:flex-start;gap:10px}
+#tourChapter{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:1px;padding:3px 8px;
+  border:1px solid var(--border);border-radius:999px;background:rgba(92,200,255,.08);flex:0 0 auto}
+#tourTitle{font-size:15px;font-weight:600}
+#tourKicker{font-size:11px;color:var(--accent-2);letter-spacing:.4px;margin-top:2px}
+#tourText{font-size:12.5px;line-height:1.55;color:#cfdcf0;margin-top:8px}
+#tourChips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);
+  background:rgba(92,200,255,.07);color:#bcd6f5}
+#tourNav{display:flex;gap:5px;flex:0 0 auto}
+#tourBar{height:3px;background:#18233a;border-radius:3px;margin-top:10px;overflow:hidden}
+#tourBarFill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+#tourDots{display:flex;gap:4px;margin-top:9px;flex-wrap:wrap}
+.tdot{width:16px;height:4px;border-radius:2px;background:#243049;cursor:pointer;
+  transition:transform var(--tr),background var(--tr)}
+.tdot:hover{transform:scaleY(1.8)}
+.tdot.done{background:rgba(92,200,255,.5)}
+.tdot.cur{background:var(--accent-2);box-shadow:0 0 10px rgba(255,193,114,.65)}
+#tourHint{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:7px;min-height:13px}
+#tourNext{position:absolute;display:none;transform:translate(-50%,-170%);z-index:30;pointer-events:none;
+  font-family:var(--mono);font-size:11px;color:var(--accent-2);white-space:nowrap;padding:2px 8px;
+  border-radius:999px;border:1px solid rgba(255,193,114,.4);background:rgba(11,16,27,.72)}
+body.touring #panel,body.touring #info{opacity:.5}
+body.touring #measure{bottom:250px}
+
+/* ---------- responsive ---------- */
+#panelToggle,#infoToggle{cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;
+  transition:background var(--tr),color var(--tr)}
+#panelToggle:hover,#infoToggle:hover{background:rgba(92,200,255,.14);color:var(--text)}
+@media (max-width:1100px){
+  #panel{width:230px}#info{width:250px}
+}
+@media (max-width:820px){
+  #panel{top:auto;bottom:96px;max-height:46vh}
+  #info{top:auto;bottom:96px;right:12px;max-height:46vh;width:min(250px,44vw)}
+  #panel.collapsed{transform:translateX(-92%)}
+  #info.collapsed{transform:translateX(92%)}
+  #stats{display:none}
+  #timebar{gap:6px;padding:8px}
+  #dateBox{font-size:11px}
+  #tour{width:min(94vw,520px);bottom:120px;padding:9px 11px 10px}
+  #tourText{font-size:12px}
+}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="labels"></div>
+
+<header id="topbar">
+  <div id="title">SISTEMA <b>SOLAR</b></div>
+  <div class="badge" id="modeBadge">Kepler J2000</div>
+  <div class="badge" id="scaleBadge">escala didáctica</div>
+  <div class="spacer"></div>
+  <div id="stats">
+    <span>FPS <b id="fps">–</b></span>
+    <span>frame <b id="mframe">–</b></span>
+    <span>física <b id="mphysics">–</b></span>
+    <span>cuerpos <b id="mbodies">–</b></span>
+    <span>drawn <b id="mdrawn">–</b></span>
+    <span id="energyWrap" style="display:none">ΔE <b id="menergy">–</b></span>
+  </div>
+</header>
+
+<aside class="panel" id="panel">
+  <header>
+    <h3>Cuerpos</h3>
+    <div class="spacer"></div>
+    <div id="panelToggle" title="Colapsar panel (P)">◀</div>
+  </header>
+  <div id="panelBody">
+    <div class="dim small" id="scaleNote" title="El radio de cada cuerpo está a escala real; lo que cambia con el modo de escala es la distancia dibujada">radios reales · distancia en escala didáctica</div>
+    <div class="group">Estrella y planetas</div>
+    <div id="listMain"></div>
+    <div class="group">Planetas enanos</div>
+    <div id="listDwarf"></div>
+    <div class="group">Lunas</div>
+    <div id="listMoon"></div>
+    <div class="group">Cometas</div>
+    <div id="listComet"></div>
+    <div class="group">Opciones de render</div>
+    <div id="toggles"></div>
+    <div class="ctrl"><label for="rngSize">Tamaño mínimo (px)</label>
+      <input type="range" id="rngSize" min="0" max="8" step="1" value="2"><span class="mono small" id="valSize">2</span></div>
+    <div class="ctrl"><label for="rngTrail">Longitud estela</label>
+      <input type="range" id="rngTrail" min="0" max="600" step="20" value="240"><span class="mono small" id="valTrail">240</span></div>
+    <div class="ctrl"><label for="rngExp">Exageración de radios</label>
+      <input type="range" id="rngExp" min="1" max="200" step="1" value="1"><span class="mono small" id="valExp">1×</span></div>
+    <div class="group">Cámara</div>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="btn" id="btnFollow">Seguir (F)</button>
+      <button class="btn" id="btnReset">Reset (R)</button>
+      <button class="btn" id="btnTop">Vista cenital</button>
+    </div>
+    <div class="row" style="flex-wrap:wrap;margin-top:6px">
+      <button class="btn" id="btnMeasure">Medir A↔B (M)</button>
+      <button class="btn" id="btnHelp">Ayuda (H)</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button class="btn" id="btnTour" title="Recorrido narrado por el sistema solar">Tour guiado (V)</button>
+    </div>
+  </div>
+</aside>
+
+<section class="panel" id="info">
+  <header>
+    <h3>Ficha del cuerpo</h3>
+    <div class="spacer"></div>
+    <div id="infoToggle" title="Colapsar ficha (I)">▶</div>
+  </header>
+  <div id="infoBody">
+    <div id="infoName">Tierra</div>
+    <div id="infoType">planeta rocoso</div>
+    <div id="infoStatic"></div>
+    <div id="liveBox"><div id="infoLive"></div></div>
+  </div>
+</section>
+
+<footer id="timebar">
+  <button class="btn primary" id="btnPlay" title="Pausa / reproduce (Espacio)">⏸</button>
+  <button class="btn" id="btnRev" title="Invertir tiempo">⇄</button>
+  <div id="dateBox"><b id="dateText">–</b> <span class="dim" id="jdText">JD –</span></div>
+  <div class="spacer"></div>
+  <div id="speedBox">velocidad <b id="speedText">1 d/s</b></div>
+  <input type="range" id="rngSpeed" min="0" max="100" step="1" value="52" style="max-width:220px">
+  <button class="btn" id="btnToday">Hoy</button>
+  <input type="date" id="datePick">
+  <button class="btn" id="btnGo">Ir</button>
+</footer>
+
+<div id="measure"></div>
+
+<section id="tour">
+  <div id="tourTop">
+    <span id="tourChapter">– / –</span>
+    <div style="flex:1;min-width:0">
+      <div id="tourTitle">Tour guiado</div>
+      <div id="tourKicker"></div>
+    </div>
+    <div id="tourNav">
+      <button class="btn" id="btnTourPrev" title="Parada anterior ([)">⏮</button>
+      <button class="btn" id="btnTourPlay" title="Pausar / reanudar el tour">⏸</button>
+      <button class="btn" id="btnTourNext" title="Parada siguiente (])">⏭</button>
+      <button class="btn" id="btnTourExit" title="Salir del tour (Esc)">✕</button>
+    </div>
+  </div>
+  <div id="tourText"></div>
+  <div id="tourChips"></div>
+  <div id="tourBar"><div id="tourBarFill"></div></div>
+  <div id="tourDots"></div>
+  <div id="tourHint"></div>
+</section>
+<div id="tourNext"></div>
+
+<div id="help">
+  <div id="helpCard">
+    <h2>Sistema Solar · simulación física offline</h2>
+    <div class="dim">Órbitas keplerianas J2000 con resolución de la ecuación de Kepler por Newton‑Raphson,
+      modo N‑cuerpo con Velocity Verlet, cinturones con lagunas de Kirkwood, cometas con cola anti‑solar,
+      rotación real (periodo y oblicuidad), texturas procedurales y sombras analíticas (eclipses, anillos).</div>
+    <h4>Teclado</h4>
+    <table>
+      <tr><td><kbd>Espacio</kbd></td><td>Pausar / reanudar la simulación</td></tr>
+      <tr><td><kbd>+</kbd> / <kbd>-</kbd></td><td>Subir / bajar la velocidad de simulación (1 s/s → 100 años/s)</td></tr>
+      <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td>Retroceder / avanzar un paso fino de velocidad</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></td><td>Orbitar la cámara (con inercia)</td></tr>
+      <tr><td><kbd>1</kbd>…<kbd>9</kbd></td><td>Seleccionar Mercurio…Plutón (0 = Sol)</td></tr>
+      <tr><td><kbd>0</kbd></td><td>Seleccionar el Sol</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Seguir el cuerpo seleccionado (cámara lo orbita)</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Dejar de seguir / cerrar ayuda</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Reiniciar la vista (visión general del sistema)</td></tr>
+      <tr><td><kbd>T</kbd></td><td>Vista cenital (eclíptica), reencuadrada a la vista general del sistema</td></tr>
+      <tr><td><kbd>H</kbd></td><td>Esta ayuda</td></tr>
+      <tr><td><kbd>V</kbd></td><td>Tour guiado: 16 paradas con narración, cámara automática y saltos de fecha</td></tr>
+      <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Parada anterior / siguiente del tour (con el tour activo, la cámara vuelve a él)</td></tr>
+      <tr><td><kbd>O</kbd> <kbd>L</kbd> <kbd>K</kbd> <kbd>B</kbd> <kbd>C</kbd> <kbd>G</kbd> <kbd>S</kbd> <kbd>A</kbd></td>
+          <td>Órbitas · etiquetas · estelas · cinturones · cometas · anillos · estrellas · atmósferas</td></tr>
+      <tr><td><kbd>D</kbd></td><td>Cambiar escala real ↔ didáctica</td></tr>
+      <tr><td><kbd>N</kbd></td><td>Modo N‑cuerpo (Velocity Verlet) ↔ kepleriano</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Regla de distancia entre el cuerpo A y el seleccionado (tiempo de luz)</td></tr>
+      <tr><td><kbd>P</kbd> / <kbd>I</kbd></td><td>Colapsar panel lateral / ficha</td></tr>
+      <tr><td><kbd>J</kbd></td><td>Saltar a la fecha de hoy</td></tr>
+    </table>
+    <h4>Ratón / táctil</h4>
+    <ul>
+      <li>Arrastrar = orbitar · rueda o pellizco = zoom (logarítmico) · botón derecho o <kbd>Shift</kbd>+arrastrar = desplazar (pan).</li>
+      <li>Doble clic sobre un cuerpo en la lista = seleccionarlo y seguirlo.</li>
+    </ul>
+    <h4>Qué comprobar (criterios de aceptación)</h4>
+    <ul>
+      <li>Tiempo: con velocidad 1 d/s, la Tierra completa una vuelta en ≈365,25 días simulados y Mercurio en ≈88 d.</li>
+      <li>Excentricidad: selecciona Mercurio, Marte, Plutón o 1P/Halley y mira la órbita (e = 0,206 / 0,093 / 0,249 / 0,967).</li>
+      <li>Cometas: la cola siempre apunta opuesta al Sol y crece al acercarse al perihelio.</li>
+      <li>Rotación: Venus gira en sentido retrógrado (oblicuidad 177,4°) y Urano rueda “tumbado” (97,8°).</li>
+      <li>N‑cuerpo: pulsa <kbd>N</kbd> y observa ΔE en la barra superior (&lt; 0,01 % en un año simulado a velocidad ≤ 1 año/s).</li>
+      <li>Eclipses: sigue la Tierra, aléjate hasta ver la Luna y pon la cámara casi en el plano Sol–Tierra–Luna.</li>
+    </ul>
+    <div class="row" style="margin-top:14px"><button class="btn primary" id="btnCloseHelp">Cerrar (Esc)</button></div>
+  </div>
+</div>
+
+<div id="loading">
+  <h1>SISTEMA SOLAR</h1>
+  <div id="bar"><div id="barFill"></div></div>
+  <div id="loadMsg">inicializando…</div>
+</div>
+<div id="fatal"></div>
+
+<script>

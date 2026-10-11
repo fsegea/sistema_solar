@@ -1,0 +1,15 @@
+# Volcados de herramientas locales (navegador automatizado, depuración)
+.playwright-mcp/
+*.log
+
+# Dependencias y temporales
+node_modules/
+tmp/
+*.tmp
+
+# Sistema operativo / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
